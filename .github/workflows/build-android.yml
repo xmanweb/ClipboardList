@@ -25,25 +25,24 @@ jobs:
         distribution: 'zulu'
         cache: 'gradle'
 
-    # 3. 核心修复：动态创建 local.properties 文件，防止 build.gradle 报错
+    # 3. 创建基础的 local.properties
     - name: Create local.properties
       run: |
         touch local.properties
         echo "sdk.dir=$ANDROID_HOME" >> local.properties
-        echo "创建 local.properties 成功，已自动注入 Android SDK 路径。"
 
     # 4. 赋予 Gradle 脚本执行权限
     - name: Grant Execute Permission for Gradlew
       run: chmod +x gradlew
 
-    # 5. 执行编译
+    # 5. 核心修改：改为编译 assembleDebug，绕过 Release 签名和本地密钥限制
     - name: Build with Gradle
-      run: ./gradlew assembleRelease
+      run: ./gradlew assembleDebug
 
-    # 6. 将编译好的 APK 上传到 GitHub Actions
+    # 6. 将编译好的 Debug APK 上传到 GitHub Actions
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ClipboardList-Release-APK
-        path: '**/build/outputs/apk/release/*.apk'
+        name: ClipboardList-Debug-APK
+        path: '**/build/outputs/apk/debug/*.apk' # 注意：路径也同步改为了 debug
         retention-days: 7

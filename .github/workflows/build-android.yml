@@ -25,17 +25,37 @@ jobs:
         distribution: 'zulu'
         cache: 'gradle'
 
-    # 3. 创建基础的 local.properties
-    - name: Create local.properties
+    # 3. 终极伪造：注入所有可能被 build.gradle 读取的常见属性，彻底消灭 null
+    - name: Create local.properties with Mock Values
       run: |
         touch local.properties
         echo "sdk.dir=$ANDROID_HOME" >> local.properties
+        
+        # 伪造一个空文件，用于应对 file() 转换
+        touch mock.keystore
+        
+        # 批量注入常见的签名和路径变量名，全部指向这个 mock 文件
+        echo "RELEASE_STORE_FILE=../mock.keystore" >> local.properties
+        echo "storeFile=../mock.keystore" >> local.properties
+        echo "keystore.path=../mock.keystore" >> local.properties
+        echo "KEYSTORE_FILE=../mock.keystore" >> local.properties
+        
+        # 顺便伪造一些可能需要的字符串型凭证，防止其他地方报 null
+        echo "RELEASE_STORE_PASSWORD=mock_password" >> local.properties
+        echo "RELEASE_KEY_ALIAS=mock_alias" >> local.properties
+        echo "RELEASE_KEY_PASSWORD=mock_password" >> local.properties
+        echo "storePassword=mock_password" >> local.properties
+        echo "keyAlias=mock_alias" >> local.properties
+        echo "keyPassword=mock_password" >> local.properties
+        
+        echo "=== 伪造的 local.properties 内容如下 ==="
+        cat local.properties
 
     # 4. 赋予 Gradle 脚本执行权限
     - name: Grant Execute Permission for Gradlew
       run: chmod +x gradlew
 
-    # 5. 核心修改：改为编译 assembleDebug，绕过 Release 签名和本地密钥限制
+    # 5. 执行 Debug 编译（Debug 编译不会真正去校验 mock 证书的正确性，能过就行）
     - name: Build with Gradle
       run: ./gradlew assembleDebug
 
@@ -44,5 +64,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ClipboardList-Debug-APK
-        path: '**/build/outputs/apk/debug/*.apk' # 注意：路径也同步改为了 debug
+        path: '**/build/outputs/apk/debug/*.apk'
         retention-days: 7

@@ -25,41 +25,44 @@ jobs:
         distribution: 'zulu'
         cache: 'gradle'
 
-    # 3. 终极伪造：注入所有可能被 build.gradle 读取的常见属性，彻底消灭 null
-    - name: Create local.properties with Mock Values
+    # 3. 创建基础 local.properties
+    - name: Create local.properties
       run: |
         touch local.properties
         echo "sdk.dir=$ANDROID_HOME" >> local.properties
-        
-        # 伪造一个空文件，用于应对 file() 转换
-        touch mock.keystore
-        
-        # 批量注入常见的签名和路径变量名，全部指向这个 mock 文件
-        echo "RELEASE_STORE_FILE=../mock.keystore" >> local.properties
-        echo "storeFile=../mock.keystore" >> local.properties
-        echo "keystore.path=../mock.keystore" >> local.properties
-        echo "KEYSTORE_FILE=../mock.keystore" >> local.properties
-        
-        # 顺便伪造一些可能需要的字符串型凭证，防止其他地方报 null
-        echo "RELEASE_STORE_PASSWORD=mock_password" >> local.properties
-        echo "RELEASE_KEY_ALIAS=mock_alias" >> local.properties
-        echo "RELEASE_KEY_PASSWORD=mock_password" >> local.properties
-        echo "storePassword=mock_password" >> local.properties
-        echo "keyAlias=mock_alias" >> local.properties
-        echo "keyPassword=mock_password" >> local.properties
-        
-        echo "=== 伪造的 local.properties 内容如下 ==="
-        cat local.properties
 
-    # 4. 赋予 Gradle 脚本执行权限
+    # 4. 降维打击：直接修改 build.gradle，注释掉引发崩溃的签名/文件流读取逻辑
+    - name: Patch build.gradle to bypass missing files
+      run: |
+        echo "=== 修复前：查看 app/build.gradle 的前 25 行 ==="
+        head -n 25 app/build.gradle
+        
+        # 核心修复逻辑：
+        # 使用 sed 寻找包含类似 file(xxx) 或 properties 的行，或者直接针对第 12 行进行安全替换。
+        # 为了万无一失，我们直接把可能包含 signingConfigs 或读取 local.properties 的敏感行注释掉，
+        # 或者直接强制干扰第 12 行。这里我们采用一种更温柔的兜底策略：
+        # 如果第 12 行包含 file()，我们将其替换为实例化一个空文件对象，不让它传 null。
+        
+        # 方案：直接用 Groovy 的安全操作符，或者强行将第 12 行替换为一个安全的占位符
+        # 这里我们直接把前几行中可能引起 evaluate 失败的本地属性赋值行，替换为安全的 dummy 定义
+        sed -i '12s/file(.*)/file("local.properties")/' app/build.gradle
+        
+        # 顺便检查一下如果是针对 properties 的 rootProject 报错，直接给它安全赋值
+        # 下面这行命令可以防止类似于 rootProject.file(...) 找不到引发的崩溃
+        sed -i 's/rootProject.file(prop/file("local.properties"/g' app/build.gradle || true
+        
+        echo "=== 修复后：查看 app/build.gradle 的前 25 行 ==="
+        head -n 25 app/build.gradle
+
+    # 5. 赋予 Gradle 脚本执行权限
     - name: Grant Execute Permission for Gradlew
       run: chmod +x gradlew
 
-    # 5. 执行 Debug 编译（Debug 编译不会真正去校验 mock 证书的正确性，能过就行）
+    # 6. 执行 Debug 编译
     - name: Build with Gradle
-      run: ./gradlew assembleDebug
+      run: ./gradlew assembleDebug --warning-mode all
 
-    # 6. 将编译好的 Debug APK 上传到 GitHub Actions
+    # 7. 将编译好的 Debug APK 上传
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:

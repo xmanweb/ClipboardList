@@ -17,11 +17,11 @@ jobs:
     - name: Checkout Source Code
       uses: actions/checkout@v4
 
-    # 2. 设置 JDK 环境
-    - name: Set up JDK 17
+    # 2. 设置 JDK 环境（升级至 JDK 21 以匹配源码要求）
+    - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: '21' # <-- 核心修改：改为 21
         distribution: 'zulu'
         cache: 'gradle'
 
@@ -31,28 +31,11 @@ jobs:
         touch local.properties
         echo "sdk.dir=$ANDROID_HOME" >> local.properties
 
-    # 4. 降维打击：直接修改 build.gradle，注释掉引发崩溃的签名/文件流读取逻辑
+    # 4. 暴力修复：注释/替换掉引发崩溃的签名/文件流读取逻辑
     - name: Patch build.gradle to bypass missing files
       run: |
-        echo "=== 修复前：查看 app/build.gradle 的前 25 行 ==="
-        head -n 25 app/build.gradle
-        
-        # 核心修复逻辑：
-        # 使用 sed 寻找包含类似 file(xxx) 或 properties 的行，或者直接针对第 12 行进行安全替换。
-        # 为了万无一失，我们直接把可能包含 signingConfigs 或读取 local.properties 的敏感行注释掉，
-        # 或者直接强制干扰第 12 行。这里我们采用一种更温柔的兜底策略：
-        # 如果第 12 行包含 file()，我们将其替换为实例化一个空文件对象，不让它传 null。
-        
-        # 方案：直接用 Groovy 的安全操作符，或者强行将第 12 行替换为一个安全的占位符
-        # 这里我们直接把前几行中可能引起 evaluate 失败的本地属性赋值行，替换为安全的 dummy 定义
         sed -i '12s/file(.*)/file("local.properties")/' app/build.gradle
-        
-        # 顺便检查一下如果是针对 properties 的 rootProject 报错，直接给它安全赋值
-        # 下面这行命令可以防止类似于 rootProject.file(...) 找不到引发的崩溃
         sed -i 's/rootProject.file(prop/file("local.properties"/g' app/build.gradle || true
-        
-        echo "=== 修复后：查看 app/build.gradle 的前 25 行 ==="
-        head -n 25 app/build.gradle
 
     # 5. 赋予 Gradle 脚本执行权限
     - name: Grant Execute Permission for Gradlew
@@ -60,7 +43,7 @@ jobs:
 
     # 6. 执行 Debug 编译
     - name: Build with Gradle
-      run: ./gradlew assembleDebug --warning-mode all
+      run: ./gradlew assembleDebug
 
     # 7. 将编译好的 Debug APK 上传
     - name: Upload APK Artifact
